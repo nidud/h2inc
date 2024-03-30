@@ -355,7 +355,7 @@ exit_options proc
         "-r<old> <new>   -- Replace string\n"
         "-o<old> <new>   -- Replace output string\n"
         "\n"
-        "Note that \"quotes\" are stripped so use -r\"\\\"old\\\"\" \"\\\"new\\\"\" to replase\n"
+        "Note that \"quotes\" are stripped so use -r\"\\\"old\\\"\" \"\\\"new\\\"\" to replace\n"
         "actual \"quoted strings\".\n\n"
         )
 
