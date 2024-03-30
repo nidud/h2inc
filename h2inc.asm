@@ -1186,7 +1186,7 @@ exit_macro proc string:string_t
 exit_macro endp
 
 
-; gues:
+; guess:
 ; #define n (x) - value
 ; #define n(x)  - macro
 
@@ -1759,7 +1759,7 @@ parse_struct_member proc uses rbx r12 r13 r14
 
     lea r12,@CStr("ptr ")
     xor ebx,ebx
-    xor r13,r13
+    xor r13d,r13d
     .if strchr(q, ',')
         mov [rax],0
     .endif
@@ -1971,6 +1971,8 @@ parse_struct proc uses rbx r12 r13 r14
     inc clevel
     or  cflags,FL_STRUCT or FL_STBUF
     mov filebuf,malloc(MAXBUF)
+    xor ecx,ecx
+    mov [rax],rcx
     mov r13,linebuf
 
     .while 1
