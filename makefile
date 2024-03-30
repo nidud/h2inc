@@ -1,10 +1,42 @@
+#
+# Makefile for H2INC
+#
+aflags = -q -Cs
+
 ifdef YACC
-h2inc:
-	asmc64 -q -Cs $@.asm
-	gcc -nostdlib -o $@ $@.o -l:libasmc.a
+
+ifdef static
+lflags = -nostdlib -Wl,-no-pie -l:libasmc.a
 else
-h2inc.exe:
-	asmc64 -q -pe -Zp8 -Cs -frame $*.asm
-#	$@ @win.h2 test.h
+aflags += -fpic
+lflags = -Wl,-pie,-z,now,-z,noexecstack
 endif
 
+h2inc:
+	asmc64 $(aflags) $@.asm
+	gcc -s -o $@ $@.o $(lflags)
+
+else
+
+ifdef static
+aflags += -frame
+else
+aflags += -pe -frame
+endif
+h2inc.exe:
+	asmc64 $(aflags) $*.asm
+ifdef static
+	linkw system con_64 file $*
+endif
+endif
+
+clean:
+ifdef YACC
+	rm -f *.o
+	rm -f ./h2inc
+else
+ifdef static
+	del h2inc.obj
+endif
+	del h2inc.exe
+endif

@@ -4,6 +4,7 @@
 ; Consult your license regarding permissions and restrictions.
 ;
 ; Change history:
+; 2024-03-30 - Added Linux GLIB and LIBASMC
 ; 2023-03-08 - added namespace and interface for Windows 10
 ;
 
@@ -20,9 +21,11 @@ else
 include winbase.inc
 endif
 include signal.inc
-include ltype.inc
 include setjmp.inc
 include tchar.inc
+
+define LTYPE_INLINE
+include ltype.inc
 
     option dllimport:none
 
@@ -2823,28 +2826,6 @@ strfcat proc buffer:string_t, path:string_t, file:string_t
 strfcat endp
 
 
-translate_subdir proc uses rbx r12 r13 r14 directory:string_t, wild:string_t
-
-  local rc, path[_MAX_PATH]:byte, ff:_finddatai64_t
-
-    lea r13,path
-    lea r12,ff
-    lea rbx,ff.name
-    mov rc,0
-
-    .ifd ( _findfirsti64(strfcat(r13, directory, wild), r12) != -1 )
-        mov r14,rax
-        .repeat
-            .if !( ff.attrib & _F_SUBDIR )
-                mov rc,translate_module(strfcat(r13, directory, rbx))
-            .endif
-        .until _findnexti64(r14, r12)
-        _findclose(r14)
-    .endif
-    .return( rc )
-
-translate_subdir endp
-
 ifdef __UNIX__
 
 GeneralFailure proc private signo:int_t
@@ -2906,11 +2887,28 @@ main proc argc:int_t, argv:array_t
 
 else
 
-define EH_STACK_INVALID    0x08
-define EH_NONCONTINUABLE   0x01
-define EH_UNWINDING        0x02
-define EH_EXIT_UNWIND      0x04
-define EH_NESTED_CALL      0x10
+translate_subdir proc uses rbx r12 r13 r14 directory:string_t, wild:string_t
+
+  local rc, path[_MAX_PATH]:byte, ff:_finddatai64_t
+
+    lea r13,path
+    lea r12,ff
+    lea rbx,ff.name
+    mov rc,0
+
+    .ifd ( _findfirsti64(strfcat(r13, directory, wild), r12) != -1 )
+        mov r14,rax
+        .repeat
+            .if !( ff.attrib & _F_SUBDIR )
+                mov rc,translate_module(strfcat(r13, directory, rbx))
+            .endif
+        .until _findnexti64(r14, r12)
+        _findclose(r14)
+    .endif
+    .return( rc )
+
+translate_subdir endp
+
 
 _exception_handler proc \
     ExceptionRecord   : PEXCEPTION_RECORD,
@@ -2923,15 +2921,15 @@ _exception_handler proc \
 
      mov eax,[rcx].EXCEPTION_RECORD.ExceptionFlags
     .switch
-    .case eax & EH_UNWINDING
-    .case eax & EH_EXIT_UNWIND
+    .case eax & EXCEPTION_UNWINDING
+    .case eax & EXCEPTION_EXIT_UNWIND
        .endc
-    .case eax & EH_STACK_INVALID
-    .case eax & EH_NONCONTINUABLE
+    .case eax & EXCEPTION_STACK_INVALID
+    .case eax & EXCEPTION_NONCONTINUABLE
         mov signo,SIGSEGV
         mov string,&@CStr("Segment violation")
        .endc
-    .case eax & EH_NESTED_CALL
+    .case eax & EXCEPTION_NESTED_CALL
         exit(1)
 
     .default
@@ -3045,15 +3043,16 @@ main proc frame:_exception_handler argc:int_t, argv:array_t
 
 endif
 
-    .new num_args:int_t = 0
-    .new num_files:int_t = 0
-    .new ff:_finddatai64_t
+   .new num_args:int_t = 0
+   .new num_files:int_t = 0
 ifdef __UNIX__
-    .new action:sigaction_t
+   .new action:sigaction_t
 
     mov action.sa_sigaction,&GeneralFailure
     mov action.sa_flags,SA_SIGINFO
     sigaction(SIGSEGV, &action, NULL)
+else
+   .new ff:_finddatai64_t
 endif
 
     lea r15,_ltype
@@ -3064,8 +3063,10 @@ endif
         write_logo()
 
         inc num_files
+ifdef __UNIX__
+        translate_module(curfile)
+else
         mov r13,curfile
-
         lea r12,ff.name
         .ifd _findfirsti64(r13, &ff) == -1
             errexit(r13)
@@ -3084,6 +3085,7 @@ endif
         .else
             translate_module(r12)
         .endif
+endif
     .endw
 
     .if !num_args
