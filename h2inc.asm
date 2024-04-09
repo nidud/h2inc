@@ -4,6 +4,7 @@
 ; Consult your license regarding permissions and restrictions.
 ;
 ; Change history:
+; 2024-04-09 - Added RECORD/ENDS handling
 ; 2024-03-30 - Added Linux GLIB and LIBASMC
 ; 2023-03-08 - added namespace and interface for Windows 10
 ;
@@ -29,7 +30,7 @@ include ltype.inc
 
     option dllimport:none
 
-define __H2INC__    108
+define __H2INC__    109
 
 define MAXLINE      512
 define MAXBUF       0x100000
@@ -40,6 +41,7 @@ define FL_STBUF     0x01
 define FL_STRUCT    0x02
 define FL_ENUM      0x04
 define FL_TYPEDEF   0x08
+define FL_RECORD    0x10
 
 .enum token_type {
     T_EOF,
@@ -1736,6 +1738,13 @@ parse_struct_member proc uses rbx r12 r13 r14
                 mov p,prevtokz(rax, q)
                 movzx r13d,clevel
                 dec r13d
+                .if ( cflags & FL_RECORD )
+
+                    dec r13d
+                    dec clevel
+                    and cflags,not FL_RECORD
+                    oprintf("%*s\n", r13d, "ends")
+                .endif
                 lea ecx,[r13-23]
                 oprintf("%*s%*s proc", r13d, "", ecx, p)
 
@@ -1811,8 +1820,29 @@ parse_struct_member proc uses rbx r12 r13 r14
         mov p,strrchr(q, ';')
     .endif
     mov p,prevtokz(p, q)
-    mov rdx,get_resword(p)
 
+    .if ( r13 )
+
+        .if !( cflags & FL_RECORD )
+
+            movzx edx,clevel
+            inc clevel
+            or cflags,FL_RECORD
+            dec edx
+            oprintf("%*s\n", edx, "record")
+        .endif
+
+    .elseif ( cflags & FL_RECORD )
+
+        dec clevel
+        and cflags,not FL_RECORD
+        movzx edx,clevel
+        dec edx
+        oprintf("%*s\n", edx, "ends")
+    .endif
+
+
+    mov rdx,get_resword(p)
     movzx eax,clevel
     dec eax
     lea ecx,[rax-23]
@@ -1983,13 +2013,28 @@ parse_struct proc uses rbx r12 r13 r14
         .case T_ID
             concat_line(r13)
             parse_struct_member()
-            .endc
+           .endc
         .case T_STRUCT
-            parse_struct()
-            .endc
-        .case T_ENDS
+            .if ( cflags & FL_RECORD )
 
-           .new enddir:byte = 0
+                dec clevel
+                and cflags,not FL_RECORD
+                movzx edx,clevel
+                dec edx
+                oprintf("%*s\n", edx, "ends")
+            .endif
+            parse_struct()
+           .endc
+        .case T_ENDS
+            .new enddir:byte = 0
+            .if ( cflags & FL_RECORD )
+
+                dec clevel
+                and cflags,not FL_RECORD
+                movzx edx,clevel
+                dec edx
+                oprintf("%*s\n", edx, "ends")
+            .endif
             xor ebx,ebx
             .if !strrchr(r13, ';')
                 concat(r13)
@@ -2008,7 +2053,7 @@ parse_struct proc uses rbx r12 r13 r14
             .if ( clevel )
                 movzx ebx,clevel
                 sub ebx,1
-                oprintf("%*sends\n", ebx, "")
+                oprintf("%*s\n", ebx, "ends")
                 strcpy(&name, r13)
                .break
             .endif
