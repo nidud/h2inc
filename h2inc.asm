@@ -4,6 +4,7 @@
 ; Consult your license regarding permissions and restrictions.
 ;
 ; Change history:
+; 2024-04-11 - Added switch -Fo <path>
 ; 2024-04-09 - Added RECORD/ENDS handling
 ; 2024-03-30 - Added Linux GLIB and LIBASMC
 ; 2023-03-08 - added namespace and interface for Windows 10
@@ -30,7 +31,7 @@ include ltype.inc
 
     option dllimport:none
 
-define __H2INC__    109
+define __H2INC__    110
 
 define MAXLINE      512
 define MAXBUF       0x100000
@@ -90,6 +91,7 @@ parseline proto
  option_s   string_t MAXARGS dup(NULL)
  option_r   string_t MAXARGS*2 dup(NULL)
  option_o   string_t MAXARGS*2 dup(NULL)
+ option_Fo  string_t NULL
 
  tokpos     string_t ?
  linebuf    string_t NULL
@@ -355,6 +357,7 @@ exit_options proc
         "-b              -- Add <brackets> on define <ID>\n"
         "-m              -- Skip empty macro lines followed by a blank\n"
         "-f<functon>     -- Strip functon: -f__attribute__\n"
+        "-Fo<path>       -- Name of output file (default is <input>.inc)\n"
         "-w<word>        -- Strip word (a valid identifier)\n"
         "-s<string>      -- Strip string\n"
         "-r<old> <new>   -- Replace string\n"
@@ -2576,8 +2579,11 @@ get_nametoken proc uses rsi rdi rbx dst:string_t, string:string_t, size:int_t, f
             .case 13
             .case 10
             .case 9
-            .case '/'
                 .break
+ifndef __UNIX__
+            .case '/'
+                .break .if !r9d
+endif
             .endsw
             movsb
         .endf
@@ -2597,6 +2603,7 @@ parse_param proc uses rbx r12 r13 cmdline:ptr string_t, buffer:string_t
 
     .switch pascal al
 ifdef __UNIX__
+    .case '-'   ; --help
     .case 'h'
 else
     .case '?'
@@ -2631,6 +2638,13 @@ endif
         inc rbx
         mov [r13],get_nametoken(r12, rbx, 256, 0)
         setarg_option(&option_f, r12, NULL)
+    .case 'F'
+        add rbx,2
+        .if ( byte ptr [rbx] == 0 )
+            mov rbx,getnextcmdstring(r13)
+        .endif
+        mov [r13],get_nametoken(r12, rbx, 256, 1)
+        setarg_option(&option_Fo, r12, NULL)
     .case 'w'
         inc rbx
         mov [r13],get_nametoken(r12, rbx, 256, 0)
@@ -2744,7 +2758,9 @@ parse_params proc uses rbx r12 r13 cmdline:ptr string_t, numargs:ptr int_t
             mov rbx,getnextcmdstring(r13)
            .endc
         .case '-'
+ifndef __UNIX__
         .case '/'
+endif
             inc rbx
             mov [r13],rbx
             parse_param(r13, &paramfile)
@@ -2792,15 +2808,19 @@ translate_module proc uses rbx source:string_t
     mov filebuf,malloc(MAXBUF)
     mov tempbuf,malloc(MAXBUF)
 
-    xchg rbx,rax
-    .if ( strrchr(strcpy(rbx, rax), '\') )
-        inc rax
-        strcpy(rbx, rax)
-    .endif
-    .if strrchr(rbx, '.')
-        strcpy(rax, ".inc")
+    .if ( option_Fo )
+        mov rbx,option_Fo
     .else
-        strcat(rbx, ".inc")
+        xchg rbx,rax
+        .if ( strrchr(strcpy(rbx, rax), '\') )
+            inc rax
+            strcpy(rbx, rax)
+        .endif
+        .if strrchr(rbx, '.')
+            strcpy(rax, ".inc")
+        .else
+            strcat(rbx, ".inc")
+        .endif
     .endif
     .if !fopen(rbx, "wt")
 
